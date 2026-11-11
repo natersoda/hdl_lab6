@@ -1,0 +1,253 @@
+-------------------------------------------------------------------------------
+-- nate ralston
+-- lab6 top
+-------------------------------------------------------------------------------
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+
+entity top is
+  port (
+    clk_50_mhz   : in  std_logic;
+    reset        : in  std_logic;
+    pb           : in  std_logic;
+    math_op      : in  std_logic_vector(1 downto 0);
+    sw           : in  std_logic_vector(7 downto 0);
+    state_out    : out std_logic_vector(3 downto 0);
+    hex0_out     : out std_logic_vector(6 downto 0);
+    hex1_out     : out std_logic_vector(6 downto 0); 
+    hex2_out     : out std_logic_vector(6 downto 0)
+  );  
+end top;  
+
+architecture arch of top is
+
+component rising_edge_synchronizer is 
+  port (
+    clk               : in std_logic;
+    reset             : in std_logic;
+    input             : in std_logic;
+    edge              : out std_logic
+  );
+end component;
+ 
+ --replace with variable
+component synchronizer_nbit is 
+  generic (
+    bits    : integer := 8
+  );
+  port (
+    clk               : in std_logic;
+    reset             : in std_logic;
+    async_in          : in std_logic_vector(bits-1 downto 0);
+    sync_out          : out std_logic_vector(bits-1 downto 0)
+  );
+end component;
+
+--deprecate and replace with alu
+ 
+component alu is
+  port (
+    reset         : in  std_logic;
+    execute       : in  std_logic;
+    a             : in  std_logic_vector(7 downto 0); 
+    b             : in  std_logic_vector(7 downto 0);
+    op            : in  std_logic_vector(1 downto 0); -- 00: add, 01: sub, 10: mult, 11: div
+    result        : out std_logic_vector(7 downto 0)
+  );  
+end component;  
+
+component seven_seg is
+  port (
+    clk             : in std_logic; 
+    reset           : in std_logic;
+    bcd             : in std_logic_vector(3 downto 0);
+    seven_seg_out   : out std_logic_vector(6 downto 0)
+  );  
+end component; 
+
+  type t_state is (first, second, third, fourth);
+  
+  signal stateReg : t_state := first;
+  signal stateNext : t_state := first;
+
+  signal pb_s : std_logic;
+  signal reset_s : std_logic;
+  signal sw_s  : std_logic_vector(7 downto 0);
+  signal math_op_s  : std_logic_vector(1 downto 0);
+  
+  signal displaysig : std_logic_vector(7 downto 0);
+  signal digit0 : std_logic_vector(3 downto 0);
+  signal digit1 : std_logic_vector(3 downto 0);
+  signal digit2 : std_logic_vector(3 downto 0);
+  signal hex0_bcd_out : std_logic_vector(6 downto 0);
+  signal hex1_bcd_out : std_logic_vector(6 downto 0);
+  signal hex2_bcd_out : std_logic_vector(6 downto 0);
+  
+  signal mem_in   : std_logic_vector(7 downto 0);
+  signal mem_1   : std_logic_vector(7 downto 0) := "00000000";
+  signal mem_2   : std_logic_vector(7 downto 0) := "00000000";
+  signal mem_3   : std_logic_vector(7 downto 0) := "00000000";
+  signal mem_4   : std_logic_vector(7 downto 0) := "00000000";
+  
+  --possibly delete depending on later use
+  signal digit0_temp : std_logic_vector(7 downto 0);
+  signal digit1_temp : std_logic_vector(7 downto 0);
+  signal digit2_temp : std_logic_vector(7 downto 0);
+ 
+begin
+
+redge_inst_pb_add: rising_edge_synchronizer
+    port map(
+      reset  => '0',
+      clk    => clk_50_mhz,
+      input  => pb,
+      edge   => pb_s
+    );
+    
+redge_inst_reset: rising_edge_synchronizer
+    port map(
+      reset  => '0',
+      clk    => clk_50_mhz,
+      input  => reset,
+      edge   => reset_s
+    );  
+    
+sycnhro_sw: synchronizer_nbit
+    generic map (
+      bits => 8
+    )
+    port map(
+      reset      => '0',
+      clk        => clk_50_mhz,
+      async_in   => sw,
+      sync_out   => sw_s
+    );
+
+sycnhro_op: synchronizer_nbit
+    generic map (
+      bits => 2
+    )
+    port map(
+      reset      => '0',
+      clk        => clk_50_mhz,
+      async_in   => math_op,
+      sync_out   => math_op_s
+    );
+    
+math_operatuins: alu
+    port map(
+     reset         => reset_s,
+     execute       => pb_s,
+     a             => mem_in,
+     b             => sw_s,
+     op            => math_op_s,
+     result        => displaysig
+    ); 
+    
+hex0_out_uut: seven_seg
+    port map(
+      reset          => reset_s,
+      clk            => clk_50_mhz,
+      bcd            => digit0,
+      seven_seg_out  => hex0_bcd_out
+    );
+    
+hex1_out_uut: seven_seg
+    port map(
+      reset          => reset_s,
+      clk            => clk_50_mhz,
+      bcd            => digit1,
+      seven_seg_out  => hex1_bcd_out
+    );
+    
+hex2_out_uut: seven_seg
+    port map(
+      reset          => reset_s,
+      clk            => clk_50_mhz,
+      bcd            => digit2,
+      seven_seg_out  => hex2_bcd_out
+    );
+
+ procStateRegister: process(reset_s, clk_50_mhz)
+ begin 
+  if (reset_s = '1') then
+   stateReg <= first;
+  elsif (clk_50_mhz'event and clk_50_mhz = '1') then
+   stateReg <= stateNext;
+  end if;
+ end process;
+
+ StateRegisterNext: process(stateReg, pb_s)
+ begin 
+  stateNext <= stateReg;
+  case stateReg is
+    when first =>
+     if (pb_s = '1') then
+        stateNext <= second;
+     end if;
+    when second =>
+     if (pb_s = '1') then
+        stateNext <= third;
+     end if;
+    when third =>
+     if (pb_s = '1') then
+        stateNext <= fourth;
+     end if;
+    when fourth =>
+      if (pb_s = '1') then
+        stateNext <= first;
+     end if;
+  end case;
+ end process;
+
+ StateRegisterLogic: process(stateReg, reset_s)
+ begin 
+  case stateReg is
+    when first =>
+     state_out <= "0001";
+     if (reset_s = '1') then
+      mem_4 <= "00000000";
+     end if;    
+     mem_in <= mem_4;
+     mem_1 <= displaysig;
+    when second =>
+     state_out <= "0010";
+     mem_in <= mem_1; 
+     mem_2 <= displaysig;
+    when third =>
+     state_out <= "0100";
+     mem_in <= mem_2;
+     mem_3 <= displaysig;
+    when fourth =>
+     state_out <= "1000";
+     mem_in <= mem_3;
+     mem_4 <= displaysig;
+  end case;
+ end process;
+
+  trunc_process: process(clk_50_mhz, displaysig)
+  begin
+    digit0_temp <= std_logic_vector( (unsigned(displaysig) - (unsigned(displaysig) mod 100) )/100);
+    digit1_temp <= std_logic_vector( ( (unsigned(displaysig) mod 100) - (unsigned(displaysig) mod 10) )/10);
+    digit2_temp <= std_logic_vector( (unsigned(displaysig) mod 10) );
+    if (clk_50_mhz'event and clk_50_mhz = '1') then
+       digit0 <= digit0_temp(3 downto 0);  
+       digit1 <= digit1_temp(3 downto 0);  
+       digit2 <= digit2_temp(3 downto 0);  
+    end if;
+  end process;
+
+  main_adder: process(clk_50_mhz, reset_s)
+  begin
+    if (reset_s = '1') then 
+      hex0_out <= "1111111";
+      hex1_out <= "1111111";
+      hex2_out <= "1111111";
+    elsif (clk_50_mhz'event and clk_50_mhz = '1') then
+      hex0_out <= hex0_bcd_out;
+      hex1_out <= hex1_bcd_out;
+      hex2_out <= hex2_bcd_out;
+    end if;
+  end process; 
+end arch;
