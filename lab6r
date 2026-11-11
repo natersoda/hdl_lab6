@@ -16,7 +16,7 @@ entity top is
     state_out    : out std_logic_vector(3 downto 0);
     hex0_out     : out std_logic_vector(6 downto 0);
     hex1_out     : out std_logic_vector(6 downto 0); 
-    hex2_out     : out std_logic_vector(6 downto 0)
+	hex2_out     : out std_logic_vector(6 downto 0)
   );  
 end top;  
 
@@ -31,6 +31,7 @@ component rising_edge_synchronizer is
   );
 end component;
  
+ --replace with variable
 component synchronizer_nbit is 
   generic (
     bits    : integer := 8
@@ -42,6 +43,8 @@ component synchronizer_nbit is
     sync_out          : out std_logic_vector(bits-1 downto 0)
   );
 end component;
+
+--deprecate and replace with alu
  
 component alu is
   port (
@@ -91,108 +94,79 @@ end component;
   signal digit0_temp : std_logic_vector(7 downto 0);
   signal digit1_temp : std_logic_vector(7 downto 0);
   signal digit2_temp : std_logic_vector(7 downto 0);
-
-  -- Internal active-high inversion signals
-  signal pb_active_high    : std_logic;
-  signal reset_active_high : std_logic;
-  
-  -- 1-bit vectors for the synchronizer inputs/outputs
-  signal pb_sync_vec       : std_logic_vector(0 downto 0);
-  signal reset_sync_vec    : std_logic_vector(0 downto 0);
  
 begin
 
-  -- Invert the physical active-low pushbuttons to active-high
-  pb_active_high <= not pb;
-  reset_active_high <= not reset;
-  
-  -- Map the synchronized system reset vector back to the main reset signal
-  reset_s <= reset_sync_vec(0);
-
-synchro_reset: synchronizer_nbit
-    generic map (
-      bits => 1
-    )
-    port map(
-      reset      => '0',
-      clk        => clk_50_mhz,
-      async_in(0)=> reset_active_high,
-      sync_out   => reset_sync_vec
-    );
-
-synchro_pb: synchronizer_nbit
-    generic map (
-      bits => 1
-    )
-    port map(
-      reset      => '0',
-      clk        => clk_50_mhz,
-      async_in(0)=> pb_active_high,
-      sync_out   => pb_sync_vec
-    );
-
 redge_inst_pb_add: rising_edge_synchronizer
     port map(
-      reset  => '0',
+      reset  => reset,
       clk    => clk_50_mhz,
-      input  => pb_sync_vec(0),
-      edge   => pb_s
+      input  => pb,
+	  edge   => pb_s
     );
-    
+	
+redge_inst_reset: rising_edge_synchronizer
+    port map(
+      reset  => reset,
+      clk    => clk_50_mhz,
+      input  => reset,
+	  edge   => reset_s
+    );	
+	
 sycnhro_sw: synchronizer_nbit
     generic map (
-      bits => 8
+	  bits => 8
     )
     port map(
-      reset      => '0',
+      reset      => reset,
       clk        => clk_50_mhz,
       async_in   => sw,
-      sync_out   => sw_s
+	  sync_out   => sw_s
     );
 
 sycnhro_op: synchronizer_nbit
     generic map (
-      bits => 2
+	  bits => 2
     )
     port map(
-      reset      => '0',
+      reset      => reset,
       clk        => clk_50_mhz,
       async_in   => math_op,
-      sync_out   => math_op_s
+	  sync_out   => math_op_s
     );
-    
+	
 math_operatuins: alu
     port map(
      reset         => reset_s,
-     execute       => pb_s,
+	 execute       => pb_s,
      a             => mem_in,
      b             => sw_s,
      op            => math_op_s,
      result        => displaysig
     ); 
-    
+	
 hex0_out_uut: seven_seg
     port map(
       reset          => reset_s,
       clk            => clk_50_mhz,
       bcd            => digit0,
-      seven_seg_out  => hex0_bcd_out
+	  seven_seg_out  => hex0_bcd_out
     );
-    
+	
 hex1_out_uut: seven_seg
     port map(
       reset          => reset_s,
       clk            => clk_50_mhz,
       bcd            => digit1,
-      seven_seg_out  => hex1_bcd_out
+	  seven_seg_out  => hex1_bcd_out
     );
-    
+	
 hex2_out_uut: seven_seg
     port map(
       reset          => reset_s,
       clk            => clk_50_mhz,
       bcd            => digit2,
-      seven_seg_out  => hex2_bcd_out
+	  seven_seg_out  => hex2_bcd_out
     );
 
  procStateRegister: process(reset_s, clk_50_mhz)
@@ -209,21 +183,21 @@ hex2_out_uut: seven_seg
   stateNext <= stateReg;
   case stateReg is
     when first =>
-     if (pb_s = '1') then
-        stateNext <= second;
-     end if;
-    when second =>
-     if (pb_s = '1') then
-        stateNext <= third;
-     end if;
-    when third =>
-     if (pb_s = '1') then
-        stateNext <= fourth;
-     end if;
-    when fourth =>
-      if (pb_s = '1') then
-        stateNext <= first;
-     end if;
+	 if (pb_s = '1') then
+	    stateNext <= second;
+	 end if;
+	when second =>
+	 if (pb_s = '1') then
+	    stateNext <= third;
+	 end if;
+	when third =>
+	 if (pb_s = '1') then
+	    stateNext <= fourth;
+	 end if;
+	when fourth =>
+	  if (pb_s = '1') then
+	    stateNext <= first;
+	 end if;
   end case;
  end process;
 
@@ -232,23 +206,23 @@ hex2_out_uut: seven_seg
   case stateReg is
     when first =>
      state_out <= "0001";
-     if (reset_s = '1') then
-      mem_4 <= "00000000";
-     end if;    
-     mem_in <= mem_4;
-     mem_1 <= displaysig;
-    when second =>
+	 if (reset_s = '1') then
+	  mem_4 <= "00000000";
+     end if;	 
+	 mem_in <= mem_4;
+	 mem_1 <= displaysig;
+	when second =>
      state_out <= "0010";
-     mem_in <= mem_1; 
-     mem_2 <= displaysig;
-    when third =>
-     state_out <= "0100";
-     mem_in <= mem_2;
-     mem_3 <= displaysig;
-    when fourth =>
-     state_out <= "1000";
-     mem_in <= mem_3;
-     mem_4 <= displaysig;
+	 mem_in <= mem_1; 
+	 mem_2 <= displaysig;
+	when third =>
+	 state_out <= "0100";
+	 mem_in <= mem_2;
+	 mem_3 <= displaysig;
+	when fourth =>
+	 state_out <= "1000";
+	 mem_in <= mem_3;
+	 mem_4 <= displaysig;
   end case;
  end process;
 
@@ -261,7 +235,7 @@ hex2_out_uut: seven_seg
        digit0 <= digit0_temp(3 downto 0);  
        digit1 <= digit1_temp(3 downto 0);  
        digit2 <= digit2_temp(3 downto 0);  
-    end if;
+	end if;
   end process;
 
   main_adder: process(clk_50_mhz, reset_s)
